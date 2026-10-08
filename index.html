@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="mk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgroAssist — препораки</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+    background: #f4f7f2;
+    color: #1f2d1a;
+    padding: 24px 16px 48px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+  header { margin-bottom: 20px; }
+  h1 { font-size: 26px; color: #2e5d26; }
+  header p { color: #5b6b55; margin-top: 4px; }
+  .filters {
+    display: flex; gap: 12px; flex-wrap: wrap;
+    background: #fff; padding: 16px; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    margin-bottom: 20px;
+  }
+  .filters label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 13px; color: #3d4a38; flex: 1; min-width: 180px; }
+  select { padding: 9px 10px; border: 1px solid #b9c4b2; border-radius: 8px; font-size: 15px; background: #fff; }
+  #status { margin-bottom: 12px; color: #5b6b55; font-size: 14px; min-height: 20px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  th, td { text-align: left; padding: 10px 12px; font-size: 14px; border-bottom: 1px solid #e6ece1; vertical-align: top; }
+  th { background: #eef4ea; color: #33552b; font-weight: 600; }
+  tr:last-child td { border-bottom: none; }
+  .sub { color: #6b7a64; font-size: 12px; }
+  .tag { display: inline-block; background: #e7f2e1; color: #2e5d26; border-radius: 6px; padding: 2px 8px; font-size: 12px; }
+  .dosage { font-weight: 600; color: #1c4020; }
+  .empty { background: #fff; border-radius: 10px; padding: 24px; text-align: center; color: #6b7a64; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+  h2 { font-size: 16px; color: #33552b; margin: 18px 0 8px; }
+  .price { white-space: nowrap; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🌾 AgroAssist</h1>
+    <p>Избери култура, болест и фаза — добиваш препорака со доза</p>
+  </header>
+
+  <div class="filters">
+    <label>Култура
+      <select id="crop"><option value="">— избери —</option></select>
+    </label>
+    <label>Болест / проблем
+      <select id="disease"><option value="">— избери —</option></select>
+    </label>
+    <label>Фаза на раст
+      <select id="phase"><option value="">— избери —</option></select>
+    </label>
+  </div>
+
+  <div id="status"></div>
+  <div id="results"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+async function loadOptions() {
+  const res = await fetch('/api/options');
+  const data = await res.json();
+  fill('crop', data.crops);
+  fill('disease', data.diseases);
+  fill('phase', data.phases);
+}
+
+function fill(id, items) {
+  const sel = $(id);
+  for (const it of items) {
+    const op = document.createElement('option');
+    op.value = it.id;
+    op.textContent = it.name;
+    sel.appendChild(op);
+  }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function rowHtml(r, phaseCol = false) {
+  const price = r.price ? `<span class="price">${r.price} ден${r.unit ? '/' + esc(r.unit) : ''}</span>` : '';
+  const stock = r.stock !== null ? (r.stock > 0 ? `<span class="tag">залиха: ${r.stock}</span>` : `<span class="tag">нема залиха</span>`) : '';
+  return `<tr>
+    ${phaseCol ? `<td><b>${esc(r.phase_name)}</b></td>` : ''}
+    <td><b>${esc(r.name)}</b><div class="sub">${esc(r.active_substance)}</div></td>
+    <td>${esc(r.category)}</td>
+    <td class="dosage">${esc(r.dosage)}</td>
+    <td>${esc(r.notes)}</td>
+    <td>${price} ${stock}</td>
+  </tr>`;
+}
+
+async function search() {
+  const crop = $('crop').value, disease = $('disease').value, phase = $('phase').value;
+  const status = $('status');
+  const out = $('results');
+
+  if (!crop || !disease || !phase) {
+    status.textContent = 'Избери ги сите три филтри.';
+    out.innerHTML = '';
+    return;
+  }
+
+  const res = await fetch(`/api/search?crop=${crop}&disease=${disease}&phase=${phase}`);
+  const data = await res.json();
+
+  if (data.exact.length) {
+    status.textContent = `Пронајдени ${data.exact.length} препораки.`;
+    out.innerHTML =
+      `<table><thead><tr><th>Производ</th><th>Категорија</th><th>Доза</th><th>Белешки</th><th>Цена / залиха</th></tr></thead>
+       <tbody>${data.exact.map(r => rowHtml(r)).join('')}</tbody></table>`;
+  } else if (data.others.length) {
+    status.textContent = 'Нема точна препорака за оваа фаза — ова работи во други фази:';
+    out.innerHTML =
+      `<table><thead><tr><th>Фаза</th><th>Производ</th><th>Категорија</th><th>Доза</th><th>Белешки</th><th>Цена / залиха</th></tr></thead>
+       <tbody>${data.others.map(r => rowHtml(r, true)).join('')}</tbody></table>`;
+  } else {
+    status.textContent = '';
+    out.innerHTML = '<div class="empty">Нема препораки за оваа комбинација на култура + болест.</div>';
+  }
+}
+
+['crop', 'disease', 'phase'].forEach(id => $(id).addEventListener('change', search));
+loadOptions();
+</script>
+</body>
+</html>
