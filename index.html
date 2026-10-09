@@ -41,7 +41,7 @@
 <body>
   <header>
     <h1>🌾 AgroAssist</h1>
-    <p>Избери култура, болест и фаза — добиваш препорака со доза</p>
+    <p>Избери култура и болест (фазата е незадолжителна) — добиваш препорака со доза</p>
   </header>
 
   <div class="filters">
@@ -51,8 +51,8 @@
     <label>Болест / проблем
       <select id="disease"><option value="">— избери —</option></select>
     </label>
-    <label>Фаза на раст
-      <select id="phase"><option value="">— избери —</option></select>
+    <label>Фаза на раст <span class="sub">(незадолжително)</span>
+      <select id="phase"><option value="">— сите фази —</option></select>
     </label>
   </div>
 
@@ -84,13 +84,16 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-function rowHtml(r, phaseCol = false) {
+function rowHtml(r) {
   const price = r.price ? `<span class="price">${r.price} ден${r.unit ? '/' + esc(r.unit) : ''}</span>` : '';
   const stock = r.stock !== null ? (r.stock > 0 ? `<span class="tag">залиха: ${r.stock}</span>` : `<span class="tag">нема залиха</span>`) : '';
+  const phaseCell = r.phase_name === 'сите фази'
+    ? `<span class="tag">сите фази</span>`
+    : esc(r.phase_name);
   return `<tr>
-    ${phaseCol ? `<td><b>${esc(r.phase_name)}</b></td>` : ''}
     <td><b>${esc(r.name)}</b><div class="sub">${esc(r.active_substance)}</div></td>
     <td>${esc(r.category)}</td>
+    <td><b>${phaseCell}</b></td>
     <td class="dosage">${esc(r.dosage)}</td>
     <td>${esc(r.notes)}</td>
     <td>${price} ${stock}</td>
@@ -102,25 +105,30 @@ async function search() {
   const status = $('status');
   const out = $('results');
 
-  if (!crop || !disease || !phase) {
-    status.textContent = 'Избери ги сите три филтри.';
+  if (!crop || !disease) {
+    status.textContent = 'Избери култура и болест.';
     out.innerHTML = '';
     return;
   }
 
-  const res = await fetch(`/api/search?crop=${crop}&disease=${disease}&phase=${phase}`);
+  const params = new URLSearchParams({ crop, disease });
+  if (phase) params.set('phase', phase);
+
+  const res = await fetch('/api/search?' + params.toString());
   const data = await res.json();
 
+  const tableHead = `<thead><tr><th>Производ</th><th>Категорија</th><th>Фаза</th><th>Доза</th><th>Белешки</th><th>Цена / залиха</th></tr></thead>`;
+
   if (data.exact.length) {
-    status.textContent = `Пронајдени ${data.exact.length} препораки.`;
+    status.textContent = phase
+      ? `Пронајдени ${data.exact.length} препораки (за избраната фаза и за сите фази).`
+      : `Пронајдени ${data.exact.length} препораки (сите фази).`;
     out.innerHTML =
-      `<table><thead><tr><th>Производ</th><th>Категорија</th><th>Доза</th><th>Белешки</th><th>Цена / залиха</th></tr></thead>
-       <tbody>${data.exact.map(r => rowHtml(r)).join('')}</tbody></table>`;
+      `<table>${tableHead}<tbody>${data.exact.map(rowHtml).join('')}</tbody></table>`;
   } else if (data.others.length) {
-    status.textContent = 'Нема точна препорака за оваа фаза — ова работи во други фази:';
+    status.textContent = 'Нема препорака за избраната фаза — ова работи во други фази:';
     out.innerHTML =
-      `<table><thead><tr><th>Фаза</th><th>Производ</th><th>Категорија</th><th>Доза</th><th>Белешки</th><th>Цена / залиха</th></tr></thead>
-       <tbody>${data.others.map(r => rowHtml(r, true)).join('')}</tbody></table>`;
+      `<table>${tableHead}<tbody>${data.others.map(rowHtml).join('')}</tbody></table>`;
   } else {
     status.textContent = '';
     out.innerHTML = '<div class="empty">Нема препораки за оваа комбинација на култура + болест.</div>';

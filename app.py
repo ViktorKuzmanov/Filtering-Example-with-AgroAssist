@@ -54,35 +54,44 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/search":
             crop = int(qs.get("crop", 0) or 0)
             disease = int(qs.get("disease", 0) or 0)
+            # phase е ОПЦИОНАЛНА: 0 или неиспратена => не филтрираме по фаза
             phase = int(qs.get("phase", 0) or 0)
-            if not (crop and disease and phase):
-                self._send(400, "application/json", b'{"error":"crop, disease and phase are required"}')
+            if not (crop and disease):
+                self._send(400, "application/json", b'{"error":"crop and disease are required"}')
                 return
 
-            # Точно совпаѓање на сите три филтри
-            exact = rows(
-                """SELECT p.name, p.category, p.active_substance, p.price, p.unit,
-                          p.stock, r.dosage, r.notes, r.sort_order
-                   FROM recommendation r
-                   JOIN product p ON p.id = r.product_id
-                   WHERE r.crop_id = ? AND r.disease_id = ? AND r.phase_id = ?
-                     AND r.is_active = 1 AND p.is_active = 1
-                   ORDER BY r.sort_order, p.name""",
-                (crop, disease, phase),
-            )
+            base_select = """SELECT p.name, p.category, p.active_substance, p.price, p.unit,
+                                    p.stock, r.dosage, r.notes, r.sort_order,
+                                    COALESCE(ph.name, 'сите фази') AS phase_name\n"""
+            base_from = """FROM recommendation r
+                           JOIN product p ON p.id = r.product_id
+                           LEFT JOIN growth_phase ph ON ph.id = r.phase_id
+                           WHERE r.crop_id = ? AND r.disease_id = ?
+                             AND r.is_active = 1 AND p.is_active = 1"""
 
-            # Пад-бек: исти култура + болест во други фази (ако нема точно совпаѓање)
-            others = rows(
-                """SELECT p.name, p.category, p.active_substance, p.price, p.unit,
-                          p.stock, r.dosage, r.notes, ph.name AS phase_name
-                   FROM recommendation r
-                   JOIN product p ON p.id = r.product_id
-                   JOIN growth_phase ph ON ph.id = r.phase_id
-                   WHERE r.crop_id = ? AND r.disease_id = ? AND r.phase_id != ?
-                     AND r.is_active = 1 AND p.is_active = 1
-                   ORDER BY ph.sort_order, r.sort_order, p.name""",
-                (crop, disease, phase),
-            )
+            if phase:
+                # Совпаѓање: избраната фаза + препораките што важат за СИТЕ фази (phase_id NULL)
+                exact = rows(
+                    base_select + base_from
+                    + " AND (r.phase_id = ? OR r.phase_id IS NULL)"
+                    + " ORDER BY (r.phase_id IS NULL), r.sort_order, p.name",
+                    (crop, disease, phase),
+                )
+                # Пад-бек: исти култура + болест во други (конкретни) фази
+                others = rows(
+                    base_select + base_from
+                    + " AND r.phase_id IS NOT NULL AND r.phase_id != ?"
+                    + " ORDER BY ph.sort_order, r.sort_order, p.name",
+                    (crop, disease, phase),
+                )
+            else:
+                # Не е избрана фаза: прикажи сè за култура + болест
+                exact = rows(
+                    base_select + base_from
+                    + " ORDER BY (r.phase_id IS NOT NULL), ph.sort_order, r.sort_order, p.name",
+                    (crop, disease),
+                )
+                others = []
 
             self._send(200, "application/json", json.dumps({"exact": exact, "others": others}, ensure_ascii=False).encode("utf-8"))
             return

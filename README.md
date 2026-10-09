@@ -1,8 +1,8 @@
 # AgroAssist — test app for filtering recommendations 🌾
 
 A simple one-page web app that tests the recommendation schema: the employee
-picks **crop → disease → growth phase** and gets a structured recommendation
-(product + dosage) from the database.
+picks **crop → disease → (optional) growth phase** and gets a structured
+recommendation (product + dosage) from the database.
 
 ## What's in this folder
 
@@ -11,7 +11,7 @@ picks **crop → disease → growth phase** and gets a structured recommendation
 | `agroassist.db` | SQLite database (created by `seed.py`) |
 | `seed.py` | Creates/resets `agroassist.db` with sample data |
 | `app.py` | Web server (Python standard library only — no installation needed) |
-| `index.html` | The UI (3 dropdowns + results table) |
+| `index.html` | The UI (crop + disease + optional phase) |
 | `migration_v2.sql` | The approved PostgreSQL migration (for later use) |
 
 ## Prerequisites
@@ -35,7 +35,7 @@ python3 seed.py
 ```
 
 This deletes and recreates all tables and inserts 48 products, 6 crops,
-15 diseases, 4 phases, and 90 recommendations.
+15 diseases, 4 phases, and 89 recommendations (5 of which apply to all phases).
 
 **2. Start the server:**
 
@@ -55,20 +55,26 @@ http://localhost:8000
 
 1. Pick a **Crop** (e.g. лозје / vine)
 2. Pick a **Disease / problem** (e.g. пламеница / downy mildew)
-3. Pick a **Growth phase** (e.g. Фаза 1 – растење)
+3. (Optional) Pick a **Growth phase** (e.g. Фаза 1 – растење). Leave it on
+   **„— сите фази —“** to see everything for that crop + disease.
 
 The app filters the recommendations automatically and shows a table with:
-product, category, active substance, **dosage**, notes, price, and stock.
+product, category, phase, **dosage**, notes, price, and stock.
 
-If there's no exact recommendation for the chosen phase, it shows the
-products that work for the same crop + disease in *other* phases (with the
-phase labelled). If there's nothing at all — it shows a message that this
-combination has no recommendation.
+Products that apply to **all phases** (e.g. copper against пламеница on
+vineyards) are stored with `phase_id = NULL` and are shown with the
+**„сите фази“** tag. They appear whether or not you pick a specific phase.
+
+If a specific phase is chosen and there's no recommendation for it, the app
+shows the products that work for the same crop + disease in *other* phases
+(with the phase labelled). If there's nothing at all — it shows a message that
+this combination has no recommendation.
 
 ## Test examples
 
-- `лозје` + `пламеница` + `Фаза 1` → 2 recommendations with dosages (Арметил комби, Манамид)
-- `лозје` + `молец` + `Фаза 1` → no exact match, shows other phases instead
+- `лозје` + `пламеница` + **no phase** → 5 recommendations, all marked „сите фази“
+- `лозје` + `пламеница` + `Фаза 2` → same 5 products (they work in every phase)
+- `лозје` + `ботритис` + `Фаза 1` → no exact match, shows other phases instead
 - `праски` + `кадравост на праска` + `Фаза 1 / Фаза 4` → different product per phase
 - `домат` + `молец` + `Фаза 3` → 3 alternative products
 

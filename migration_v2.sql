@@ -70,15 +70,19 @@ CREATE TABLE growth_phase (
 );
 
 -- 2d. Preporaka — the heart of the app.
---     One row = "For crop X, in phase Y, against disease Z, use product P,
---     dosage D". This single table replaces product_crop and answers ALL your
---     questions: phase-specific products, multi-disease products, per-disease
---     dosage — all just more rows.
+--     One row = "For crop X, optionally in phase Y, against disease Z, use
+--     product P, dosage D". This single table replaces product_crop and answers
+--     ALL your questions: phase-specific products, products usable in ALL
+--     phases, multi-disease products, per-disease dosage — all just more rows.
+--
+--     phase_id is OPTIONAL: NULL means "applies to ALL growth phases"
+--     (e.g. copper against downy mildew / plamenica on grapes can be used
+--     at any time). The app still accepts and filters a specific phase.
 CREATE TABLE recommendation (
     id          SERIAL PRIMARY KEY,
     crop_id     INTEGER NOT NULL,
     disease_id  INTEGER NOT NULL,
-    phase_id    INTEGER NOT NULL,
+    phase_id    INTEGER NULL,                -- NULL = works in all phases
     product_id  INTEGER NOT NULL,
     dosage      TEXT    NOT NULL,               -- '20 g na 100 L voda', '3 mL/L'
     notes       TEXT,                           -- karenca, repeat after X days, warnings
@@ -86,8 +90,6 @@ CREATE TABLE recommendation (
     is_active   BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
 
-    CONSTRAINT uq_recommendation
-        UNIQUE (crop_id, disease_id, phase_id, product_id),  -- no duplicate rows
     CONSTRAINT fk_rec_crop
         FOREIGN KEY (crop_id)     REFERENCES crop(id)        ON DELETE CASCADE ON UPDATE CASCADE,
     CONSTRAINT fk_rec_disease
@@ -97,6 +99,15 @@ CREATE TABLE recommendation (
     CONSTRAINT fk_rec_product
         FOREIGN KEY (product_id)  REFERENCES product(id)     ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+-- No duplicate rows for a specific phase...
+CREATE UNIQUE INDEX uq_recommendation
+    ON recommendation (crop_id, disease_id, phase_id, product_id)
+    WHERE phase_id IS NOT NULL;
+-- ...and only one "all phases" row per crop + disease + product.
+CREATE UNIQUE INDEX uq_recommendation_allphases
+    ON recommendation (crop_id, disease_id, product_id)
+    WHERE phase_id IS NULL;
 
 -- 3) INDEXES for fast filtering
 CREATE INDEX idx_rec_disease     ON recommendation (disease_id);

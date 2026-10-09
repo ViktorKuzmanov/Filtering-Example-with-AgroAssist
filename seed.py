@@ -58,19 +58,28 @@ CREATE TABLE recommendation (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     crop_id     INTEGER NOT NULL,
     disease_id  INTEGER NOT NULL,
-    phase_id    INTEGER NOT NULL,
+    -- phase_id е ОПЦИОНАЛНА: NULL значи „важи за СИТЕ фази“ (пр. пламеница на лозје)
+    phase_id    INTEGER,
     product_id  INTEGER NOT NULL,
     dosage      TEXT    NOT NULL,
     notes       TEXT,
     sort_order  INTEGER NOT NULL DEFAULT 0,
     is_active   INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-    UNIQUE (crop_id, disease_id, phase_id, product_id),
     FOREIGN KEY (crop_id)    REFERENCES crop(id)        ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (disease_id) REFERENCES disease(id)     ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (phase_id)   REFERENCES growth_phase(id) ON DELETE CASCADE ON UPDATE CASCADE,
     FOREIGN KEY (product_id) REFERENCES product(id)     ON DELETE CASCADE ON UPDATE CASCADE
 );
+
+-- Уникатност: една препорака по култура+болест+производ за конкретна фаза...
+CREATE UNIQUE INDEX idx_rec_unique_phase
+    ON recommendation (crop_id, disease_id, phase_id, product_id)
+    WHERE phase_id IS NOT NULL;
+-- ...и само една препорака „за сите фази“ по култура+болест+производ.
+CREATE UNIQUE INDEX idx_rec_unique_allphases
+    ON recommendation (crop_id, disease_id, product_id)
+    WHERE phase_id IS NULL;
 
 CREATE INDEX idx_rec_disease ON recommendation (disease_id);
 CREATE INDEX idx_rec_phase   ON recommendation (phase_id);
@@ -162,15 +171,15 @@ PHASES = [
     ("Фаза 4 – зреење и берба", 4, "2026-08-01", "2026-10-20"),
 ]
 
-# (култура, болест, фаза 1-4, производ, доза, белешка, редослед)
+# (култура, болест, фаза 1-4 ИЛИ "сите" за сите фази, производ, доза, белешка, редослед)
 RECOMMENDATIONS = [
     # --- лозје -------------------------------------------------------------
-    ("лозје", "пламеница", 1, "Арметил комби", "2.5 kg/ha (≈50 g/100 L вода)", "повтори по 10–14 дена", 1),
-    ("лозје", "пламеница", 1, "Манамид 1л", "1.0 L/ha", None, 2),
-    ("лозје", "пламеница", 2, "Милдикут 1л", "1.5 L/ha", None, 1),
-    ("лозје", "пламеница", 2, "Арметил комби", "2 kg/ha", None, 2),
-    ("лозје", "пламеница", 3, "Фунгуран 1кг", "0.3% (300 g/100 L)", "бакар — ограничи ги третманите", 1),
-    ("лозје", "пламеница", 3, "Друм 0,25", "0.2 kg/ha", None, 2),
+    # Пламеница на лозје: може да се применува во СИТЕ фази (нема фиксна фаза)
+    ("лозје", "пламеница", "сите", "Арметил комби", "2.5 kg/ha (≈50 g/100 L вода)", "може во сите фази; повтори по 10–14 дена", 1),
+    ("лозје", "пламеница", "сите", "Манамид 1л", "1.0 L/ha", "може во сите фази", 2),
+    ("лозје", "пламеница", "сите", "Фунгуран 1кг", "0.3% (300 g/100 L)", "бакар — може во сите фази; ограничи ги третманите", 3),
+    ("лозје", "пламеница", "сите", "Милдикут 1л", "1.5 L/ha", "може во сите фази", 4),
+    ("лозје", "пламеница", "сите", "Друм 0,25", "0.2 kg/ha", "може во сите фази", 5),
     ("лозје", "пламеница и црна дамка", 1, "Ортоцид 1кг", "2.5 kg/ha", None, 1),
     ("лозје", "пламеница и црна дамка", 2, "Арметил комби", "2 kg/ha", "ист производ како кај пламеницата, друга фаза", 1),
     ("лозје", "пламеница и црна дамка", 3, "Милдикут 1л", "1.0 L/ha", None, 1),
@@ -292,6 +301,13 @@ def main():
         return con.execute(f"SELECT id FROM {table} WHERE name = ?", (name,)).fetchone()[0]
 
     for crop, disease, phase_no, product, dosage, notes, order in RECOMMENDATIONS:
+        # "сите" (или 0/None) => препораката важи за сите фази (phase_id = NULL)
+        if phase_no in ("сите", "all", 0, None):
+            phase_id = None
+        else:
+            phase_id = con.execute(
+                "SELECT id FROM growth_phase WHERE sort_order = ?", (phase_no,)
+            ).fetchone()[0]
         con.execute(
             "INSERT INTO recommendation"
             " (crop_id, disease_id, phase_id, product_id, dosage, notes, sort_order)"
@@ -299,7 +315,7 @@ def main():
             (
                 rid("crop", crop),
                 rid("disease", disease),
-                con.execute("SELECT id FROM growth_phase WHERE sort_order = ?", (phase_no,)).fetchone()[0],
+                phase_id,
                 rid("product", product),
                 dosage,
                 notes,
