@@ -89,13 +89,13 @@ CREATE TABLE recommendation (
     created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
 
     CONSTRAINT fk_rec_crop
-        FOREIGN KEY (crop_id)     REFERENCES crop(id)        ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (crop_id)     REFERENCES crop(id)        ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_rec_disease
-        FOREIGN KEY (disease_id)  REFERENCES disease(id)     ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (disease_id)  REFERENCES disease(id)     ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_rec_phase
-        FOREIGN KEY (phase_id)    REFERENCES growth_phase(id) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (phase_id)    REFERENCES growth_phase(id) ON DELETE RESTRICT ON UPDATE CASCADE,
     CONSTRAINT fk_rec_product
-        FOREIGN KEY (product_id)  REFERENCES product(id)     ON DELETE CASCADE ON UPDATE CASCADE
+        FOREIGN KEY (product_id)  REFERENCES product(id)     ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- No duplicate rows for a specific phase...

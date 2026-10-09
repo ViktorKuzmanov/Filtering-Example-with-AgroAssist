@@ -66,10 +66,10 @@ CREATE TABLE recommendation (
     sort_order  INTEGER NOT NULL DEFAULT 0,
     is_active   INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
-    FOREIGN KEY (crop_id)    REFERENCES crop(id)        ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (disease_id) REFERENCES disease(id)     ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (phase_id)   REFERENCES growth_phase(id) ON DELETE CASCADE ON UPDATE CASCADE,
-    FOREIGN KEY (product_id) REFERENCES product(id)     ON DELETE CASCADE ON UPDATE CASCADE
+    FOREIGN KEY (crop_id)    REFERENCES crop(id)        ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY (disease_id) REFERENCES disease(id)     ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY (phase_id)   REFERENCES growth_phase(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    FOREIGN KEY (product_id) REFERENCES product(id)     ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
 -- Уникатност: една препорака по култура+болест+производ за конкретна фаза...
