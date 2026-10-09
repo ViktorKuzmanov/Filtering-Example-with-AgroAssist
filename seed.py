@@ -25,8 +25,8 @@ CREATE TABLE product (
     active_substance TEXT,
     is_active       INTEGER NOT NULL DEFAULT 1,
     deadline        TEXT,          -- рок на употреба
-    stock           INTEGER
-    -- НАМАВА dosage овде! Дозата живее во recommendation.
+    stock           INTEGER,
+    default_dosage  TEXT            -- општа доза (fallback); специфичната живее во recommendation
 );
 
 CREATE TABLE crop (

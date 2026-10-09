@@ -11,13 +11,11 @@
 -- ----------------------------------------------------------------------------
 
 -- 1a. Dosage is NOT a property of a product: it depends on crop + disease +
---     phase. Move dosage to the recommendation table (section 2).
---     Option A (recommended): remove it.
-ALTER TABLE product DROP COLUMN dosage;
-
---     Option B (instead of A): keep it only as a non-binding reference and
---     make sure the app NEVER shows it as a recommendation:
--- ALTER TABLE product RENAME COLUMN dosage TO default_dosage;
+--     phase (see recommendation table, section 2). Keep the product-level
+--     value only as a non-binding DEFAULT reference (TEXT) — the app shows
+--     it only when a recommendation has no dosage of its own.
+ALTER TABLE product RENAME COLUMN dosage TO default_dosage;
+ALTER TABLE product ALTER COLUMN default_dosage TYPE TEXT;
 
 
 -- 1b. Protect sales history: deleting a product must never wipe sale lines.
