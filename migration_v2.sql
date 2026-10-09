@@ -42,7 +42,7 @@ ALTER TABLE product ALTER COLUMN default_dosage TYPE TEXT;
 -- 2a. Kultura / crop  (small lookup table — keep it!)
 CREATE TABLE crop (
     id          SERIAL PRIMARY KEY,
-    name        VARCHAR(120) NOT NULL UNIQUE,   -- 'Lozje', 'Praski', 'Luk'
+    name        TEXT NOT NULL UNIQUE,            -- 'Lozje', 'Praski', 'Luk'
     description TEXT,
     is_active   BOOLEAN      NOT NULL DEFAULT TRUE,   -- deactivate, don't delete
     created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
@@ -51,7 +51,7 @@ CREATE TABLE crop (
 -- 2b. Bolest / problem (small lookup table — keep it!)
 CREATE TABLE disease (
     id          SERIAL PRIMARY KEY,
-    name        VARCHAR(120) NOT NULL UNIQUE,   -- 'Pepelnica', 'Plamenica'
+    name        TEXT NOT NULL UNIQUE,            -- 'Pepelnica', 'Plamenica'
     description TEXT,                           -- symptoms / how to recognize it
     is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
@@ -60,7 +60,7 @@ CREATE TABLE disease (
 -- 2c. Faza na rastenje
 CREATE TABLE growth_phase (
     id          SERIAL PRIMARY KEY,
-    name        VARCHAR(120) NOT NULL UNIQUE,   -- 'Faza 1 - rastenje', 'Faza 2 - cvetanje'
+    name        TEXT NOT NULL UNIQUE,            -- 'Faza 1 - rastenje', 'Faza 2 - cvetanje'
     sort_order  INTEGER      NOT NULL DEFAULT 0,      -- 1,2,3… = order in dropdown
     period_from DATE,                                  -- optional guidance only (nullable)
     period_to   DATE,                                  -- optional guidance only (nullable)
