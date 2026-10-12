@@ -1,0 +1,157 @@
+-- ============================================================================
+-- AgroAssist — SAFE PostgreSQL migration (capitalised existing tables)
+-- Target: an existing DB where your tables are quoted/capitalised, most likely
+--         "Product", "Customer", "Sale", "SaleItem" (e.g. created by Prisma).
+--
+-- Adds the recommendation schema (crop / disease / growth_phase / recommendation)
+-- and turns "Product"."Dosage" into a fallback default (default_dosage).
+--
+-- This migration is ADDITIVE and NON-DESTRUCTIVE:
+--   * it never DELETEs rows and never DROPs an existing table/column
+--   * it does NOT recreate "Product" — it references your existing one
+--   * everything runs in ONE transaction -> on error, ROLLBACK leaves the DB untouched
+--
+-- ============================================================================
+-- BEFORE YOU RUN
+-- ============================================================================
+-- 0) BACK UP (keep the file somewhere safe):
+--      pg_dump -Fc YOUR_DB_NAME > ~/agroassist_backup_$(date +%F_%H%M).dump
+--    And test it on a scratch DB:
+--      createdb agroassist_restore_test
+--      pg_restore -d agroassist_restore_test ~/agroassist_backup_*.dump
+--
+-- 1) CONFIRM THE EXACT NAMES (PostgreSQL is case-sensitive for quoted names):
+--      \dt
+--      \d "Product"
+--      \d "SaleItem"
+--    These must be literally "Product" / "SaleItem" (capital P / capital S,I).
+--    If they are all-lowercase (product, saleitem), remove the double quotes below.
+-- ============================================================================
+
+BEGIN;
+
+-- ---------------------------------------------------------------------------
+-- 1) "Product"."Dosage"  ->  default_dosage
+--    Renaming keeps all existing values. The DO block is idempotent: it renames
+--    whichever casing actually exists, and does nothing if already migrated.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.columns
+               WHERE table_schema = current_schema()
+                 AND table_name = 'Product' AND column_name = 'Dosage') THEN
+        ALTER TABLE "Product" RENAME COLUMN "Dosage" TO default_dosage;
+        RAISE NOTICE 'Renamed "Product"."Dosage" -> default_dosage';
+    ELSIF EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema()
+                    AND table_name = 'Product' AND column_name = 'dosage') THEN
+        ALTER TABLE "Product" RENAME COLUMN dosage TO default_dosage;
+        RAISE NOTICE 'Renamed "Product".dosage -> default_dosage';
+    ELSIF EXISTS (SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = current_schema()
+                    AND table_name = 'Product' AND column_name = 'default_dosage') THEN
+        RAISE NOTICE 'default_dosage already exists - nothing to rename';
+    ELSE
+        RAISE EXCEPTION 'No Dosage/dosage/default_dosage column found on "Product" - check \d "Product"';
+    END IF;
+END $$;
+
+
+-- ---------------------------------------------------------------------------
+-- 2) New lookup tables
+-- ---------------------------------------------------------------------------
+CREATE TABLE crop (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT,
+    is_active   BOOLEAN   NOT NULL DEFAULT TRUE,   -- deactivate, never delete
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE disease (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    description TEXT,
+    is_active   BOOLEAN   NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE growth_phase (
+    id          SERIAL PRIMARY KEY,
+    name        TEXT NOT NULL UNIQUE,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    period_from DATE,
+    period_to   DATE,
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+
+-- ---------------------------------------------------------------------------
+-- 3) recommendation
+--    phase_id NULL => the rule applies to ALL growth phases.
+--    product_id -> your EXISTING "Product" table (do NOT recreate it).
+-- ---------------------------------------------------------------------------
+CREATE TABLE recommendation (
+    id          SERIAL PRIMARY KEY,
+    crop_id     INTEGER NOT NULL,
+    disease_id  INTEGER NOT NULL,
+    phase_id    INTEGER NULL,                       -- NULL = all phases
+    product_id  INTEGER NOT NULL,
+    dosage      TEXT    NOT NULL,
+    notes       TEXT,
+    sort_order  INTEGER NOT NULL DEFAULT 0,
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT fk_rec_crop
+        FOREIGN KEY (crop_id)    REFERENCES crop(id)         ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_rec_disease
+        FOREIGN KEY (disease_id) REFERENCES disease(id)      ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_rec_phase
+        FOREIGN KEY (phase_id)   REFERENCES growth_phase(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+    CONSTRAINT fk_rec_product
+        FOREIGN KEY (product_id) REFERENCES "Product"(id)    ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+
+-- ---------------------------------------------------------------------------
+-- 4) Uniqueness + lookup indexes
+-- ---------------------------------------------------------------------------
+CREATE UNIQUE INDEX uq_recommendation
+    ON recommendation (crop_id, disease_id, phase_id, product_id)
+    WHERE phase_id IS NOT NULL;
+CREATE UNIQUE INDEX uq_recommendation_allphases
+    ON recommendation (crop_id, disease_id, product_id)
+    WHERE phase_id IS NULL;
+
+CREATE INDEX idx_rec_disease ON recommendation (disease_id);
+CREATE INDEX idx_rec_phase   ON recommendation (phase_id);
+CREATE INDEX idx_rec_product ON recommendation (product_id);
+
+
+-- ---------------------------------------------------------------------------
+-- 5) RECOMMENDED (optional): stop deleting a product from wiping sale history.
+--    Your "SaleItem"."productId" FK is currently ON DELETE CASCADE.
+--    Find the real constraint name first:
+--      SELECT conname FROM pg_constraint
+--      WHERE conrelid = '"SaleItem"'::regclass AND contype = 'f';
+--    Then (illustrative — use the name you found):
+--
+-- ALTER TABLE "SaleItem" DROP CONSTRAINT "SaleItem_productId_fkey";
+-- ALTER TABLE "SaleItem" ADD CONSTRAINT "SaleItem_productId_fkey"
+--     FOREIGN KEY ("productId") REFERENCES "Product"(id)
+--     ON DELETE RESTRICT ON UPDATE CASCADE;
+-- ---------------------------------------------------------------------------
+
+COMMIT;
+
+
+-- ============================================================================
+-- AFTER — verify
+-- ============================================================================
+--   \d "Product"          -- dosage is now default_dosage, all rows intact
+--   \d recommendation     -- FKs point to "Product", crop, disease, growth_phase
+--   SELECT COUNT(*) FROM "Product";   -- same number as before the migration
+--
+-- Before COMMIT, if anything looks wrong:  ROLLBACK;
+-- ============================================================================
